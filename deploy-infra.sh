@@ -1,6 +1,6 @@
 #!/bin/bash
 
-STACK_NAME=awsbootstrap5
+STACK_NAME=awsbootstrap6
 REGION=ca-central-1
 CLI_PROFILE=awsbootstrap
 
