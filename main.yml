@@ -301,11 +301,11 @@ Resources:
 
 
 Outputs:
-  InstanceEndpoint:
+  InstanceEndpoint1:
     Description: The DNS name for the created instance
     Value:  !Sub "http://${Instance.PublicDnsName}:8080"
     Export:
-      Name: InstanceEndpoint
+      Name: InstanceEndpoint1
 
   InstanceEndpoint2:
     Description: The DNS name for the created instance
