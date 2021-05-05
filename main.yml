@@ -114,9 +114,10 @@ Resources:
 
   StagingDeploymentGroup:
     Type: AWS::CodeDeploy::DeploymentGroup
-    DependsOn: Instance
     Properties:
       DeploymentGroupName: staging
+      AutoScalingGroups:
+        - !Ref ScalingGroup
       ApplicationName: !Ref DeploymentApplication
       DeploymentConfigName: CodeDeployDefault.AllAtOnce
       ServiceRoleArn: !GetAtt DeploymentRole.Arn
@@ -201,7 +202,7 @@ Resources:
     Properties:
       Roles:
         - Ref: InstanceRole
-  
+
   VPC:
     Type: AWS::EC2::VPC
     Properties:
@@ -211,7 +212,7 @@ Resources:
       Tags:
         - Key: Name
           Value: !Ref AWS::StackName
-  
+
   SubnetAZ1:
     Type: AWS::EC2::Subnet
     Properties:
@@ -319,6 +320,7 @@ Resources:
         - Key: Name
           Value: !Ref AWS::StackName
 
+
   Instance:
     Type: AWS::EC2::Instance
     CreationPolicy:
@@ -348,6 +350,48 @@ Resources:
       Tags:
         - Key: Name
           Value: !Ref AWS::StackName
+
+  ScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MinInstancesInService: "1"
+        MaxBatchSize: "1"
+        PauseTime: "PT15M"
+        WaitOnResourceSignals: "true"
+        SuspendProcesses:
+          - HealthCheck
+          - ReplaceUnhealthy
+          - AZRebalance
+          - AlarmNotification
+          - ScheduledActions
+    Properties:
+      AutoScalingGroupName: !Sub 'ASG_${AWS::StackName}'
+      AvailabilityZones:
+        - !Select [ 0, !GetAZs '' ]
+        - !Select [ 1, !GetAZs '' ]
+      MinSize: 2
+      MaxSize: 6
+      HealthCheckGracePeriod: 0
+      HealthCheckType: ELB
+      LaunchTemplate:
+        LaunchTemplateId: !Ref InstanceLaunchTemplate
+        Version: !GetAtt InstanceLaunchTemplate.LatestVersionNumber
+      TargetGroupARNs:
+        - !Ref LoadBalancerTargetGroup
+      MetricsCollection:
+        -
+          Granularity: "1Minute"
+          Metrics:
+            - "GroupMaxSize"
+            - "GroupInServiceInstances"
+      VPCZoneIdentifier:
+        - !Ref SubnetAZ1
+        - !Ref SubnetAZ2
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+          PropagateAtLaunch: "true"
 
   InstanceLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
@@ -382,15 +426,15 @@ Resources:
             #!/bin/bash -xe
 
             # send script output to /tmp so we can debug boot failures
-            exec > /tmp/userdata.log 2>&1 
+            exec > /tmp/userdata.log 2>&1
 
             # Update all packages
             yum -y update
 
             # Get latest cfn scripts; https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/best-practices.html#cfninit
             yum install -y aws-cfn-bootstrap
-            
-            cat > /tmp/install_script.sh << EOF 
+
+            cat > /tmp/install_script.sh << EOF
               # START
               echo "Setting up NodeJS Environment"
               curl https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
@@ -409,7 +453,7 @@ Resources:
             EOF
 
             chown ec2-user:ec2-user /tmp/install_script.sh && chmod a+x /tmp/install_script.sh
-            sleep 1; sudo su - ec2-user -c "/tmp/install_script.sh" 
+            sleep 1; sudo su - ec2-user -c "/tmp/install_script.sh"
 
             # Have CloudFormation install any files and packages from the metadata
             /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --region ${AWS::Region} --resource InstanceLaunchTemplate
@@ -430,4 +474,4 @@ Outputs:
     Description: The DNS name for the LB
     Value: !Sub "http://${LoadBalancer.DNSName}:80"
     Export:
-      Name: LBEndpoint
+      Name: LBendpoint
